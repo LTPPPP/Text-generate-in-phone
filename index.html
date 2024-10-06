@@ -4,42 +4,235 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Camera to Text</title>
+    <title>Camera to Text with Auto Language Detection and Translation</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
             margin: 0;
-            flex-direction: column;
+            padding: 20px;
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .box {
+            border: 1px solid #ddd;
+            padding: 10px;
+            width: 300px;
+        }
+
+        .camera-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
         }
 
         video,
-        canvas {
+        #capturedImage {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #canvas {
             display: none;
         }
 
-        #outputText {
-            margin-top: 20px;
-            width: 300px;
+        #outputText,
+        #translatedText {
+            margin-top: 10px;
             border: 1px solid #ddd;
             padding: 10px;
             white-space: pre-wrap;
+        }
+
+        #status {
+            margin-top: 10px;
+            font-style: italic;
+        }
+
+        #ocrProgress {
+            width: 100%;
+            margin-top: 10px;
+            display: none;
+        }
+
+        #targetLanguageSelect {
+            margin-bottom: 10px;
+        }
+
+        #capture {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: #fff;
+            border: 2px solid #000;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        #capture:hover {
+            background-color: #f0f0f0;
+        }
+
+        .highlight {
+            background-color: yellow;
+            cursor: pointer;
         }
     </style>
 </head>
 
 <body>
-    <h1>Capture Image and Convert to Text</h1>
-    <video id="video" width="300" height="200" autoplay></video>
-    <button id="capture">Capture</button>
-    <canvas id="canvas" width="300" height="200"></canvas>
-    <div id="outputText">Detected text will appear here...</div>
+    <h1>Camera to Text with Auto Language Detection and Translation</h1>
+    <div class="container">
+        <div class="box">
+            <h2>Live Camera</h2>
+            <div class="camera-container">
+                <video id="video" autoplay playsinline></video>
+                <button id="capture">📷</button>
+            </div>
+        </div>
+        <div class="box">
+            <h2>Captured Image & Analysis</h2>
+            <img id="capturedImage" alt="Captured Image" style="display:none;">
+            <canvas id="canvas"></canvas>
+            <div id="status"></div>
+            <progress id="ocrProgress" value="0" max="100"></progress>
+            <div>Detected Language: <span id="detectedLanguage"></span></div>
+            <div id="outputText">Detected text will appear here...</div>
+            <div id="translatedText">Translated text will appear here...</div>
+        </div>
+    </div>
 
-    <script src="script.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const captureButton = document.getElementById('capture');
+        const outputText = document.getElementById('outputText');
+        const translatedText = document.getElementById('translatedText');
+        const status = document.getElementById('status');
+        const capturedImage = document.getElementById('capturedImage');
+        const ocrProgress = document.getElementById('ocrProgress');
+        const detectedLanguageSpan = document.getElementById('detectedLanguage');
+        const context = canvas.getContext('2d');
+
+        // Access the camera
+        function initializeCamera() {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(stream => {
+                    video.srcObject = stream;
+                    status.textContent = "Camera is ready. Click capture to analyze.";
+                })
+                .catch(err => {
+                    console.error('Camera access error:', err);
+                    status.textContent = "Camera access denied or unavailable.";
+                });
+        }
+
+        // Capture image from video and process
+        function captureImage() {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageDataUrl = canvas.toDataURL('image/png');
+            capturedImage.src = imageDataUrl;
+            capturedImage.style.display = 'block';
+            return imageDataUrl;
+        }
+
+        // Detect language and recognize text
+        function processImage(imageDataUrl) {
+            status.textContent = "Processing image...";
+            ocrProgress.style.display = 'block';
+            ocrProgress.value = 0;
+
+            Tesseract.recognize(imageDataUrl, 'osd', {
+                logger: m => {
+                    if (m.status === 'recognizing text') {
+                        ocrProgress.value = m.progress * 100;
+                    }
+                }
+            }).then(({ data }) => {
+                const detectedScript = data.script;
+                const detectedLanguage = scriptToLanguage(detectedScript);
+                detectedLanguageSpan.textContent = detectedLanguage;
+
+                return Tesseract.recognize(imageDataUrl, detectedLanguage, {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            ocrProgress.value = m.progress * 100;
+                        }
+                    }
+                });
+            }).then(({ data: { text, words } }) => {
+                displayHighlightedText(words);
+                status.textContent = "Processing complete";
+            }).catch(err => {
+                console.error('OCR error:', err);
+                status.textContent = "Error processing image.";
+            });
+        }
+
+        // Highlight recognized text and attach click events for translation
+        function displayHighlightedText(words) {
+            outputText.innerHTML = words.map(word => `<span class="highlight" data-text="${word.text}">${word.text}</span>`).join(' ');
+            outputText.addEventListener('click', event => {
+                if (event.target.classList.contains('highlight')) {
+                    translateText(event.target.dataset.text);
+                }
+            });
+        }
+
+        // Simple mock translation function
+        function translateText(text) {
+            translatedText.textContent = `Translating "${text}"...`;
+            mockTranslate(text, detectedLanguageSpan.textContent, 'eng').then(translation => {
+                translatedText.textContent = translation;
+            }).catch(err => {
+                console.error('Translation error:', err);
+                translatedText.textContent = "Error translating.";
+            });
+        }
+
+        // Simulated translation API
+        function mockTranslate(text, fromLang, toLang) {
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    resolve(`Translated: "${text}" from ${fromLang} to ${toLang}`);
+                }, 500);
+            });
+        }
+
+        // Map script names to languages
+        function scriptToLanguage(script) {
+            const scriptLangMap = {
+                'Latin': 'eng',
+                'Arabic': 'ara',
+                'Chinese': 'chi_sim',
+                'Cyrillic': 'rus',
+                'Devanagari': 'hin',
+                'Japanese': 'jpn',
+                'Korean': 'kor'
+            };
+            return scriptLangMap[script] || 'eng';
+        }
+
+        // Initialize camera and event listeners
+        initializeCamera();
+        captureButton.addEventListener('click', () => processImage(captureImage()));
+    </script>
 </body>
 
 </html>
