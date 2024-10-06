@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera to Text</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            flex-direction: column;
+        }
+
+        video,
+        canvas {
+            display: none;
+        }
+
+        #outputText {
+            margin-top: 20px;
+            width: 300px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Capture Image and Convert to Text</h1>
+    <video id="video" width="300" height="200" autoplay></video>
+    <button id="capture">Capture</button>
+    <canvas id="canvas" width="300" height="200"></canvas>
+    <div id="outputText">Detected text will appear here...</div>
+
+    <script src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+</body>
+
+</html>
